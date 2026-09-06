@@ -8,5 +8,10 @@ repository = "https://github.com/ananwanan/binary_archive"
 readme = "README.md"
 keywords = ["binary", "serialization", "archive", "chunk"]
 categories = ["encoding", "data-structures"]
+exclude = [
+    ".idea/*",
+    ".vscode/*",
+    "target/*",
+]
 
 [dependencies]
