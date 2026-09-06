@@ -1,0 +1,12 @@
+[package]
+name = "binary_archive"
+version = "0.1.0"
+edition = "2024"
+description = "A small, versioned binary serialization and chunk archive library"
+license = "MIT"
+repository = "https://github.com/ananwanan/binary_archive"
+readme = "README.md"
+keywords = ["binary", "serialization", "archive", "chunk"]
+categories = ["encoding", "data-structures"]
+
+[dependencies]
