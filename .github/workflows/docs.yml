@@ -17,6 +17,7 @@ concurrency:
 jobs:
   docs:
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -34,7 +35,21 @@ jobs:
       - name: Prepare Pages artifact
         run: |
           mkdir -p site
-          cp -R target/doc/binary_archive/. site/
+          cp -R target/doc/. site/
+
+          cat > site/index.html <<'EOF'
+          <!doctype html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=binary_archive/">
+            <script>location.href = "binary_archive/";</script>
+          </head>
+          <body>
+            <a href="binary_archive/">Open binary_archive documentation</a>
+          </body>
+          </html>
+          EOF
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
