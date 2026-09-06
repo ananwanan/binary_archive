@@ -7,6 +7,13 @@ pub mod archive;
 pub mod codec;
 pub mod error;
 
+pub(crate) fn type_name<T>() -> &'static str {
+    std::any::type_name::<T>()
+        .rsplit("::")
+        .next()
+        .unwrap_or("unknown")
+}
+
 pub use archive::{ArchiveReader, ArchiveWriter, ChunkHeader, ChunkReader, ChunkWriter};
 
 pub use codec::{BinaryDecode, BinaryEncode};

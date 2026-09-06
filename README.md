@@ -3,6 +3,10 @@
 Small, deterministic binary serialization for Rust with versioned,
 length-delimited chunks.
 
+Use `write_named(&value)` and `read_named::<Value>()` to put the short Rust
+struct name (for example `Project`) into the file as the magic field. A mismatch
+returns `InvalidMagic` before the payload is decoded.
+
 Run the demos with `cargo run --example basic` and
 `cargo run --example chunks`.
 

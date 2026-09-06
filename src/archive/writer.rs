@@ -26,6 +26,15 @@ where
         value.encode(self)
     }
 
+    /// Writes the short Rust type name before the value as its format magic.
+    pub fn write_named<T>(&mut self, value: &T) -> ArchiveResult<()>
+    where
+        T: BinaryEncode,
+    {
+        self.write(crate::type_name::<T>())?;
+        self.write(value)
+    }
+
     pub fn position(&mut self) -> ArchiveResult<u64> {
         Ok(self.inner.stream_position()?)
     }

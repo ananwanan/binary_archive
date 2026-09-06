@@ -42,6 +42,22 @@ where
         T::decode(self)
     }
 
+    /// Reads and validates the short Rust type name before decoding the value.
+    pub fn read_named<T>(&mut self) -> ArchiveResult<T>
+    where
+        T: BinaryDecode,
+    {
+        let actual: String = self.read()?;
+        let expected = crate::type_name::<T>();
+        if actual != expected {
+            return Err(crate::ArchiveError::InvalidMagic {
+                expected: expected.to_owned(),
+                actual,
+            });
+        }
+        self.read()
+    }
+
     pub fn position(&mut self) -> ArchiveResult<u64> {
         Ok(self.inner.stream_position()?)
     }

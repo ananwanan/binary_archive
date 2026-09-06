@@ -190,4 +190,16 @@ mod tests {
         let mut reader = ArchiveReader::new(Cursor::new(bytes));
         assert!(matches!(reader.read_chunk(), Err(ArchiveError::Io(_))));
     }
+
+    #[test]
+    fn named_values_validate_type_name() {
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut writer = ArchiveWriter::new(&mut cursor);
+            writer.write_named(&123u32).unwrap();
+        }
+        cursor.set_position(0);
+        let mut reader = ArchiveReader::new(cursor);
+        assert_eq!(reader.read_named::<u32>().unwrap(), 123);
+    }
 }
