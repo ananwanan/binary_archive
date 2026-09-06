@@ -12,6 +12,8 @@ exclude = [
     ".idea/*",
     ".vscode/*",
     "target/*",
+    ".github/*",
+    "CNAME",
 ]
 
 [dependencies]

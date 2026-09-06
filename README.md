@@ -3,6 +3,19 @@
 Small, deterministic binary serialization for Rust with versioned,
 length-delimited chunks.
 
+For ordinary structs, `impl_binary_archive!` generates the serialization and
+deserialization implementations from a field list. The struct must implement
+`Default`:
+
+```rust
+binary_archive::impl_binary_archive! {
+    Project, version = 1, fields {
+        name: String,
+        visible: bool,
+    }
+}
+```
+
 API documentation: <https://docs.ananwanan.cc/binary_archive/>.
 
 Use `write_named(&value)` and `read_named::<Value>()` to put the short Rust
