@@ -34,6 +34,7 @@ jobs:
         run: |
           mkdir -p site
           cp -R target/doc/binary_archive/. site/
+          cp CNAME site/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
