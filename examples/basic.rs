@@ -37,16 +37,13 @@ impl BinaryDecode for Project {
     {
         let mut result = Self::default();
         reader.read_chunks(|version, chunk| {
-            match version {
-                VERSION_INIT => {
-                    result.description = chunk.read()?;
-                    result.insert_point = chunk.read()?;
-                    result.angle = chunk.read()?;
-                    result.visible = chunk.read()?;
-                    result.layer = chunk.read()?;
-                    chunk.finish()?;
-                }
-                _ => {} // Unknown chunk payload is skipped for forward compatibility.
+            if version == VERSION_INIT {
+                result.description = chunk.read()?;
+                result.insert_point = chunk.read()?;
+                result.angle = chunk.read()?;
+                result.visible = chunk.read()?;
+                result.layer = chunk.read()?;
+                chunk.finish()?;
             }
             Ok(())
         })?;
