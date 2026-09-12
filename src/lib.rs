@@ -50,6 +50,7 @@ macro_rules! impl_binary_archive {
     };
 }
 
+pub use archive::DeletedFieldPolicy;
 pub use archive::{ArchiveReader, ArchiveWriter, ChunkHeader, ChunkReader, ChunkWriter};
 
 pub use codec::{BinaryDecode, BinaryEncode};
@@ -57,7 +58,61 @@ pub use traits::BinaryArchive;
 
 /// Derives versioned encoding and decoding for named, tuple, and unit structs.
 /// Set `#[binary_archive(version = 2)]` to override the default version of 1.
-/// All fields must implement the corresponding codec trait; `Default` is not required.
+/// All fields must implement the corresponding codec trait. The original
+/// positional mode does not require `Default`.
+///
+/// `#[binary_archive(versioned, version = 2)]` enables named, versioned fields.
+/// Field `version` means introduction version and defaults to the struct version.
+/// Keep old fields' introduction versions explicit when increasing the struct version.
+/// When reading older data, new fields use `Default` or their `default = expression`.
+/// Field annotations also enable this format. `id = "stable-name"` preserves
+/// identity across renames (and tuple position changes).
+///
+/// Deleted fields warn by default; see [`DeletedFieldPolicy`]. This opt-in
+/// format requires migration of existing positional archives.
+///
+/// ```
+/// use binary_archive::BinaryArchive;
+/// #[derive(BinaryArchive)]
+/// #[binary_archive(versioned, version = 1)]
+/// struct V1 { name: String }
+/// #[derive(BinaryArchive)]
+/// #[binary_archive(versioned, version = 2)]
+/// struct V2 {
+///     #[binary_archive(version = 1)]
+///     name: String,
+///     visible: bool, // introduced in version 2
+/// }
+/// let bytes = V1 { name: "Demo".into() }.to_bytes()?;
+/// let loaded = V2::from_bytes(&bytes)?;
+/// assert_eq!(loaded.name, "Demo");
+/// assert!(!loaded.visible);
+/// # Ok::<(), binary_archive::ArchiveError>(())
+/// ```
+///
+/// Field versions cannot exceed the struct version:
+/// ```compile_fail
+/// #[derive(binary_archive::BinaryArchive)]
+/// struct Invalid { #[binary_archive(version = 2)] field: u32 }
+/// ```
+/// Field IDs must be unique:
+/// ```compile_fail
+/// #[derive(binary_archive::BinaryArchive)]
+/// struct Invalid {
+///     #[binary_archive(id = "same")] first: u32,
+///     #[binary_archive(id = "same")] second: u32,
+/// }
+/// ```
+/// Field versions cannot be declared twice:
+/// ```compile_fail
+/// #[derive(binary_archive::BinaryArchive)]
+/// struct Invalid { #[binary_archive(version = 1, version = 1)] field: u32 }
+/// ```
+/// Unknown field settings are rejected:
+/// ```compile_fail
+/// #[derive(binary_archive::BinaryArchive)]
+/// struct Invalid { #[binary_archive(unknown = 1)] field: u32 }
+/// ```
 ///
 /// ```
 /// use binary_archive::BinaryArchive;

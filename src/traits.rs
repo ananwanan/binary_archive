@@ -30,6 +30,22 @@ pub trait BinaryArchive: BinaryEncode + BinaryDecode {
         Self::from_bytes_with_limit(bytes, 64 * 1024 * 1024)
     }
 
+    /// Decodes one value with a deleted-field policy and the default allocation limit.
+    /// `Panic` deliberately panics if an obsolete field is encountered.
+    fn from_bytes_with_policy(
+        bytes: &[u8],
+        policy: crate::DeletedFieldPolicy,
+    ) -> ArchiveResult<Self> {
+        let mut reader = ArchiveReader::new(Cursor::new(bytes)).with_deleted_field_policy(policy);
+        let value = reader.read()?;
+        if reader.position()? != bytes.len() as u64 {
+            return Err(ArchiveError::InvalidData(
+                "trailing bytes after value".into(),
+            ));
+        }
+        Ok(value)
+    }
+
     /// Decodes exactly one value using a custom per-allocation limit in bytes.
     fn from_bytes_with_limit(bytes: &[u8], max_bytes: u64) -> ArchiveResult<Self> {
         let mut reader = ArchiveReader::new(Cursor::new(bytes)).with_max_allocation(max_bytes);

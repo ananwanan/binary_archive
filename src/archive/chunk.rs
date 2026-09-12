@@ -28,6 +28,20 @@ impl<'a, W: Write + Seek> ChunkWriter<'a, W> {
         self.archive.write(value)
     }
 
+    /// Writes a named, length-delimited field with its introduction version.
+    #[doc(hidden)]
+    pub fn write_versioned_field<T: BinaryEncode + ?Sized>(
+        &mut self,
+        name: &str,
+        version: u32,
+        value: &T,
+    ) -> ArchiveResult<()> {
+        self.archive.write(name)?;
+        self.archive
+            .write_chunk(version, |chunk| chunk.write(value))?;
+        Ok(())
+    }
+
     /// Completes the chunk and patches its payload length in the header.
     pub fn finish(mut self) -> ArchiveResult<ChunkHeader> {
         let end = self.archive.position()?;
@@ -77,6 +91,7 @@ pub struct ChunkReader {
     header: ChunkHeader,
     payload: std::io::Cursor<Vec<u8>>,
     max_allocation: u64,
+    options: super::policy::DecodeOptions,
 }
 
 impl ChunkReader {
@@ -87,9 +102,63 @@ impl ChunkReader {
 
     /// Reads one value from the current payload position.
     pub fn read<T: BinaryDecode>(&mut self) -> ArchiveResult<T> {
-        T::decode(
-            &mut ArchiveReader::new(&mut self.payload).with_max_allocation(self.max_allocation),
-        )
+        let mut reader =
+            ArchiveReader::new(&mut self.payload).with_max_allocation(self.max_allocation);
+        reader.options = self.options;
+        T::decode(&mut reader)
+    }
+
+    /// Iterates the named fields of a versioned struct, validating their metadata.
+    #[doc(hidden)]
+    pub fn read_versioned_fields<F>(&mut self, mut f: F) -> ArchiveResult<()>
+    where
+        F: FnMut(&str, u32, &mut ChunkReader) -> ArchiveResult<()>,
+    {
+        let marker: [u8; 8] = self.read()?;
+        if &marker != b"BARFLD01" {
+            return Err(ArchiveError::InvalidData(
+                "expected versioned field format; migrate legacy positional data first".into(),
+            ));
+        }
+        let mut names = std::collections::HashSet::new();
+        while self.remaining() != 0 {
+            let mut reader =
+                ArchiveReader::new(&mut self.payload).with_max_allocation(self.max_allocation);
+            reader.options = self.options;
+            let name: String = reader.read()?;
+            let mut field = reader.read_chunk()?;
+            let version = field.header().version;
+            if version > self.header.version {
+                return Err(ArchiveError::InvalidData(format!(
+                    "field {name:?} version {version} exceeds stored struct version {}",
+                    self.header.version
+                )));
+            }
+            names.try_reserve(1).map_err(|err| {
+                ArchiveError::InvalidData(format!("cannot allocate field index: {err}"))
+            })?;
+            if !names.insert(name.clone()) {
+                return Err(ArchiveError::InvalidData(format!(
+                    "duplicate field {name:?}"
+                )));
+            }
+            f(&name, version, &mut field)?;
+        }
+        self.finish()
+    }
+
+    /// Applies the inherited policy to a stored field missing from the local schema.
+    #[doc(hidden)]
+    pub fn handle_deleted_field(
+        &self,
+        struct_name: &str,
+        field_name: &str,
+        target_version: u32,
+    ) -> ArchiveResult<()> {
+        if self.header.version > target_version {
+            return Ok(());
+        }
+        self.options.deleted_field(format!("stored field {struct_name}.{field_name} (introduced in version {}) is absent from schema version {target_version}; field discarded", self.header.version))
     }
     /// Returns the number of unread payload bytes.
     pub fn remaining(&self) -> u64 {
@@ -128,6 +197,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             header: ChunkHeader { version, length },
             payload: std::io::Cursor::new(payload),
             max_allocation: self.max_allocation,
+            options: self.options,
         })
     }
 

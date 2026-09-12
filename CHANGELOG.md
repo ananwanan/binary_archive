@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.2
+
+- Add opt-in field versioning with `#[binary_archive(versioned, version = N)]`.
+  Field annotations also enable the format. Unannotated fields inherit the
+  struct version; existing fields must keep their original introduction version.
+- Newer schemas read older records by defaulting fields introduced later.
+  Each field supports `default = expression`, otherwise its type needs `Default`.
+- Store stable field IDs, introduction versions, and payload lengths so fields
+  can be reordered or removed without shifting subsequent reads. Explicit
+  `id = "..."` supports renamed fields and stable tuple positions.
+- Warn by default when a stored field is absent from the current schema. Add
+  `DeletedFieldPolicy::{Warn, Error, Panic}`, reader policy/warning-handler
+  configuration, and `BinaryArchive::from_bytes_with_policy`. Nested reads
+  inherit these settings. Fields introduced after the reader schema are skipped.
+- Reject duplicate IDs, mismatched introduction versions, missing existing
+  fields, malformed lengths, and truncated payloads.
+- Keep the original positional derive/macro behavior and bytes unchanged.
+  Existing positional files require explicit migration to the new field format.
+- Add cross-version examples, integration tests, and invalid-attribute doctests.
+
 ## 0.2.1
 
 - Add the `BinaryArchive` convenience trait with `to_bytes`, `from_bytes`, and

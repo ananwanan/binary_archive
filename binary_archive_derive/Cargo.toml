@@ -1,6 +1,6 @@
 [package]
 name = "binary_archive_derive"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Derive macro for binary_archive versioned serialization"
 license = "MIT"

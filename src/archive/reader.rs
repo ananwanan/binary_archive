@@ -5,6 +5,7 @@ use crate::{ArchiveResult, BinaryDecode};
 pub struct ArchiveReader<R> {
     inner: R,
     pub(crate) max_allocation: u64,
+    pub(crate) options: super::policy::DecodeOptions,
 }
 
 impl<R> ArchiveReader<R>
@@ -15,6 +16,7 @@ where
         Self {
             inner,
             max_allocation: 64 * 1024 * 1024,
+            options: super::policy::DecodeOptions::default(),
         }
     }
 
@@ -22,6 +24,19 @@ where
     /// Nested chunk readers inherit this limit. This is not a total-memory budget.
     pub fn with_max_allocation(mut self, max_bytes: u64) -> Self {
         self.max_allocation = max_bytes;
+        self
+    }
+
+    /// Sets the handling of deleted fields in versioned structs, including nested values.
+    pub fn with_deleted_field_policy(mut self, policy: super::DeletedFieldPolicy) -> Self {
+        self.options.deleted_fields = policy;
+        self
+    }
+
+    /// Redirects schema warnings to a function instead of standard error.
+    /// The handler is inherited by all nested chunk readers.
+    pub fn with_warning_handler(mut self, handler: fn(&str)) -> Self {
+        self.options.warning_handler = Some(handler);
         self
     }
 

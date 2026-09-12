@@ -6,6 +6,8 @@ use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields, GenericParam, LitInt, parse_macro_input, parse_quote};
 
+mod versioned;
+
 /// Generates `BinaryEncode` and `BinaryDecode` for a struct.
 #[proc_macro_derive(BinaryArchive, attributes(binary_archive))]
 pub fn derive_binary_archive(input: TokenStream) -> TokenStream {
@@ -16,11 +18,19 @@ pub fn derive_binary_archive(input: TokenStream) -> TokenStream {
 
 fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let mut version = None;
+    let mut versioned = false;
     for attr in &input.attrs {
         if attr.path().is_ident("binary_archive") {
             attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("versioned") {
+                    if versioned {
+                        return Err(meta.error("duplicate `versioned` setting"));
+                    }
+                    versioned = true;
+                    return Ok(());
+                }
                 if !meta.path.is_ident("version") {
-                    return Err(meta.error("expected `version = <u32 literal>`"));
+                    return Err(meta.error("expected `version = <u32 literal>` or `versioned`"));
                 }
                 if version.is_some() {
                     return Err(meta.error("duplicate archive version"));
@@ -37,16 +47,14 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             "BinaryArchive supports structs only",
         ));
     };
-    for field in &data.fields {
-        for attr in &field.attrs {
-            if attr.path().is_ident("binary_archive") {
-                return Err(syn::Error::new_spanned(
-                    attr,
-                    "archive attributes belong on the struct",
-                ));
-            }
-        }
-    }
+    // Field annotations opt into the new format; the explicit struct setting
+    // is useful for version 1, where all fields inherit the struct version.
+    versioned |= data.fields.iter().any(|field| {
+        field
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("binary_archive"))
+    });
     let archive = match crate_name("binary_archive")
         .map_err(|err| syn::Error::new(Span::call_site(), err))?
     {
@@ -87,6 +95,43 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     for param in decode_generics.type_params_mut() {
         param.bounds.push(parse_quote!(#archive::BinaryDecode));
     }
+    let versioned_code = if versioned {
+        let generated = versioned::generate(data, version, &archive, name)?;
+        for ty in &generated.default_types {
+            decode_generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#ty: ::std::default::Default));
+        }
+        Some(generated)
+    } else {
+        None
+    };
+    let (encode_body, decode_body) = if let Some(generated) = versioned_code {
+        (generated.encode, generated.decode)
+    } else {
+        (
+            quote! {
+                writer.write_chunk(#version, |__binary_archive_chunk| {
+                    #(__binary_archive_chunk.write(&self.#members)?;)*
+                    Ok(())
+                })?;
+                Ok(())
+            },
+            quote! {
+                let mut __binary_archive_chunk = reader.read_chunk()?;
+                if __binary_archive_chunk.header().version != #version {
+                    return Err(#archive::ArchiveError::InvalidData(::std::format!(
+                        "unsupported {} version: expected {}, actual {}",
+                        ::std::stringify!(#name), #version, __binary_archive_chunk.header().version
+                    )));
+                }
+                let value = #construct;
+                __binary_archive_chunk.finish()?;
+                Ok(value)
+            },
+        )
+    };
     let (encode_impl, _, encode_where) = encode_generics.split_for_impl();
     let (decode_impl, _, decode_where) = decode_generics.split_for_impl();
     let (_, type_generics, _) = input.generics.split_for_impl();
@@ -105,27 +150,14 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             fn encode<#io: ::std::io::Write + ::std::io::Seek>(
                 &self, writer: &mut #archive::ArchiveWriter<#io>
             ) -> #archive::ArchiveResult<()> {
-                writer.write_chunk(#version, |__binary_archive_chunk| {
-                    #(__binary_archive_chunk.write(&self.#members)?;)*
-                    Ok(())
-                })?;
-                Ok(())
+                #encode_body
             }
         }
         impl #decode_impl #archive::BinaryDecode for #name #type_generics #decode_where {
             fn decode<#io: ::std::io::Read + ::std::io::Seek>(
                 reader: &mut #archive::ArchiveReader<#io>
             ) -> #archive::ArchiveResult<Self> {
-                let mut __binary_archive_chunk = reader.read_chunk()?;
-                if __binary_archive_chunk.header().version != #version {
-                    return Err(#archive::ArchiveError::InvalidData(::std::format!(
-                        "unsupported {} version: expected {}, actual {}",
-                        ::std::stringify!(#name), #version, __binary_archive_chunk.header().version
-                    )));
-                }
-                let value = #construct;
-                __binary_archive_chunk.finish()?;
-                Ok(value)
+                #decode_body
             }
         }
     })
