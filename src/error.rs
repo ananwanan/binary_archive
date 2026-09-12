@@ -67,4 +67,11 @@ impl fmt::Display for ArchiveError {
     }
 }
 
-impl std::error::Error for ArchiveError {}
+impl std::error::Error for ArchiveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(err) => Some(err),
+            _ => None,
+        }
+    }
+}

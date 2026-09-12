@@ -4,7 +4,7 @@ use crate::{ArchiveResult, BinaryDecode};
 
 pub struct ArchiveReader<R> {
     inner: R,
-    max_allocation: u64,
+    pub(crate) max_allocation: u64,
 }
 
 impl<R> ArchiveReader<R>
@@ -18,7 +18,8 @@ where
         }
     }
 
-    /// Sets the maximum number of bytes a length-prefixed value may allocate.
+    /// Sets the maximum number of bytes a single buffer may allocate.
+    /// Nested chunk readers inherit this limit. This is not a total-memory budget.
     pub fn with_max_allocation(mut self, max_bytes: u64) -> Self {
         self.max_allocation = max_bytes;
         self
@@ -63,7 +64,10 @@ where
     }
 
     pub(crate) fn end_position(&mut self) -> ArchiveResult<u64> {
-        Ok(self.inner.seek(SeekFrom::End(0))?)
+        let position = self.position()?;
+        let end = self.inner.seek(SeekFrom::End(0))?;
+        self.seek(position)?;
+        Ok(end)
     }
 
     pub fn seek(&mut self, position: u64) -> ArchiveResult<()> {
@@ -84,5 +88,26 @@ where
     pub(crate) fn read_raw(&mut self, data: &mut [u8]) -> ArchiveResult<()> {
         self.inner.read_exact(data)?;
         Ok(())
+    }
+
+    pub(crate) fn read_bytes(&mut self, length: u64, kind: &'static str) -> ArchiveResult<Vec<u8>> {
+        let size = self.checked_length(length, kind)?;
+        let mut bytes = Vec::new();
+        bytes.try_reserve_exact(size).map_err(|err| {
+            crate::ArchiveError::InvalidData(format!("cannot allocate {kind}: {err}"))
+        })?;
+        bytes.resize(size, 0);
+        self.read_raw(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    pub(crate) fn checked_count<T>(&self, count: u64) -> ArchiveResult<usize> {
+        // Count zero-sized elements too, to bound the number of decoder calls.
+        let size = std::mem::size_of::<T>().max(1) as u64;
+        let bytes = count
+            .checked_mul(size)
+            .ok_or(crate::ArchiveError::LengthOverflow { length: count })?;
+        self.checked_length(bytes, "collection allocation")?;
+        usize::try_from(count).map_err(|_| crate::ArchiveError::LengthOverflow { length: count })
     }
 }

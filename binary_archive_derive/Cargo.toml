@@ -1,0 +1,17 @@
+[package]
+name = "binary_archive_derive"
+version = "0.2.1"
+edition = "2024"
+description = "Derive macro for binary_archive versioned serialization"
+license = "MIT"
+repository = "https://github.com/ananwanan/binary_archive"
+readme = "README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+proc-macro-crate = "3"

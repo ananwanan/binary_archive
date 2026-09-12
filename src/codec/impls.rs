@@ -143,11 +143,7 @@ impl BinaryDecode for String {
     {
         let length: u64 = reader.read()?;
 
-        let length = reader.checked_length(length, "string")?;
-
-        let mut bytes = vec![0u8; length];
-
-        reader.read_raw(&mut bytes)?;
+        let bytes = reader.read_bytes(length, "string")?;
 
         String::from_utf8(bytes)
             .map_err(|err| ArchiveError::InvalidData(format!("invalid UTF-8: {err}")))
@@ -233,9 +229,12 @@ where
     {
         let count: u64 = reader.read()?;
 
-        let count = reader.checked_length(count, "vector")?;
+        let count = reader.checked_count::<T>(count)?;
 
-        let mut values = Vec::with_capacity(count);
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(count)
+            .map_err(|err| ArchiveError::InvalidData(format!("cannot allocate vector: {err}")))?;
 
         for _ in 0..count {
             values.push(reader.read()?);
@@ -268,7 +267,11 @@ where
     where
         R: Read + Seek,
     {
-        let mut values = Vec::with_capacity(N);
+        reader.checked_count::<T>(N as u64)?;
+        let mut values = Vec::new();
+        values.try_reserve_exact(N).map_err(|err| {
+            ArchiveError::InvalidData(format!("cannot allocate array buffer: {err}"))
+        })?;
 
         for _ in 0..N {
             values.push(reader.read()?);

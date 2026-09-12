@@ -1,6 +1,6 @@
 [package]
 name = "binary_archive"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "A small, versioned binary serialization and chunk archive library"
 license = "MIT"
@@ -17,3 +17,16 @@ exclude = [
 ]
 
 [dependencies]
+binary_archive_derive = { version = "=0.2.1", path = "binary_archive_derive", optional = true }
+
+[features]
+default = []
+derive = ["dep:binary_archive_derive"]
+
+[workspace]
+members = ["binary_archive_derive"]
+resolver = "3"
+
+[[example]]
+name = "derive"
+required-features = ["derive"]

@@ -76,6 +76,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
 pub struct ChunkReader {
     header: ChunkHeader,
     payload: std::io::Cursor<Vec<u8>>,
+    max_allocation: u64,
 }
 
 impl ChunkReader {
@@ -86,14 +87,21 @@ impl ChunkReader {
 
     /// Reads one value from the current payload position.
     pub fn read<T: BinaryDecode>(&mut self) -> ArchiveResult<T> {
-        T::decode(&mut ArchiveReader::new(&mut self.payload))
+        T::decode(
+            &mut ArchiveReader::new(&mut self.payload).with_max_allocation(self.max_allocation),
+        )
     }
-    /// Returns whether all payload bytes have been consumed.
+    /// Returns the number of unread payload bytes.
     pub fn remaining(&self) -> u64 {
-        self.payload.get_ref().len() as u64 - self.payload.position()
+        (self.payload.get_ref().len() as u64).saturating_sub(self.payload.position())
     }
     /// Requires that the decoder consumed the complete payload.
     pub fn finish(&self) -> ArchiveResult<()> {
+        if self.payload.position() > self.payload.get_ref().len() as u64 {
+            return Err(ArchiveError::InvalidData(
+                "decoder moved beyond chunk payload".into(),
+            ));
+        }
         if self.remaining() == 0 {
             Ok(())
         } else {
@@ -115,12 +123,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
     pub fn read_chunk(&mut self) -> ArchiveResult<ChunkReader> {
         let version = self.read()?;
         let length: u64 = self.read()?;
-        let size = self.checked_length(length, "chunk payload")?;
-        let mut payload = vec![0; size];
-        self.read_raw(&mut payload)?;
+        let payload = self.read_bytes(length, "chunk payload")?;
         Ok(ChunkReader {
             header: ChunkHeader { version, length },
             payload: std::io::Cursor::new(payload),
+            max_allocation: self.max_allocation,
         })
     }
 
@@ -128,7 +135,18 @@ impl<R: Read + Seek> ArchiveReader<R> {
     pub fn skip_chunk(&mut self) -> ArchiveResult<ChunkHeader> {
         let version = self.read()?;
         let length: u64 = self.read()?;
-        self.skip(length)?;
+        let target = self
+            .position()?
+            .checked_add(length)
+            .ok_or_else(|| ArchiveError::InvalidData("chunk end position overflow".into()))?;
+        if target > self.end_position()? {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "truncated chunk payload",
+            )
+            .into());
+        }
+        self.seek(target)?;
         Ok(ChunkHeader { version, length })
     }
 
@@ -141,9 +159,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
     where
         F: FnMut(u32, &mut ChunkReader) -> ArchiveResult<()>,
     {
-        let start = self.position()?;
         let end = self.end_position()?;
-        self.seek(start)?;
         while self.position()? < end {
             let mut chunk = self.read_chunk()?;
             let version = chunk.header().version;

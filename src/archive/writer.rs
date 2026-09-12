@@ -14,7 +14,8 @@ where
         Self { inner }
     }
 
-    /// Returns the wrapped writer after all buffered data has been flushed.
+    /// Returns the wrapped writer without flushing it. Call [`Self::flush`]
+    /// first when buffered writes must be completed and errors reported.
     pub fn into_inner(self) -> W {
         self.inner
     }
