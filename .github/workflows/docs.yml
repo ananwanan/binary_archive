@@ -24,7 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,20 +42,20 @@ jobs:
           # 复制 binary_archive crate 文档
           cp -R target/doc/binary_archive/. site/
 
-          # 复制 rustdoc 的 CSS / JS / 字体等公共静态资源
+          # 复制 rustdoc 的 CSS / JS /字体等公共静态资源
           cp -R target/doc/static.files site/static.files
 
           # 因为 crate 文档从 target/doc/binary_archive/
           # 被提升到了 Pages 根目录，
           # 所以需要修正 rustdoc 生成的静态资源相对路径
           find site -name '*.html' -type f -exec \
-            sed -i 's|\.\./static\.files/|static.files/|g' {} +
+            sed -i 's|\\.\\./static\\.files/|static.files/|g' {} +
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
